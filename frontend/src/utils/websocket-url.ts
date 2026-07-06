@@ -10,7 +10,7 @@ export function extractBaseHost(
     try {
       const url = new URL(conversationUrl);
       // If the conversation URL points to localhost but we're accessing from external,
-      // use the browser's hostname with the conversation URL's port
+      // use the browser's current host (which goes through the proxy chain)
       const urlHostname = url.hostname;
       const browserHostname =
         window.location.hostname ?? window.location.host?.split(":")[0];
@@ -20,7 +20,7 @@ export function extractBaseHost(
         browserHostname !== "localhost" &&
         browserHostname !== "127.0.0.1"
       ) {
-        return `${browserHostname}:${url.port}`;
+        return window.location.host;
       }
       return url.host; // e.g., "localhost:3000"
     } catch {
@@ -41,12 +41,27 @@ export function extractPathPrefix(
 ): string {
   if (!conversationUrl || conversationUrl.startsWith("/")) return "";
   try {
-    const { pathname } = new URL(conversationUrl);
-    // The SDK serves both LLM and ACP conversations on the unified
-    // ``/api/conversations`` route, so a single regex anchored at a segment
-    // boundary is enough. ``$|/`` stops at the ``/{id}`` segment that
-    // follows so a path that merely *contains* ``/api/conversations`` as a
-    // substring of some unrelated segment is not misclassified.
+    const url = new URL(conversationUrl);
+    const { pathname } = url;
+
+    // If the URL is a localhost URL and we're accessing from external,
+    // inject /runtime/{port} prefix so traffic routes through the Vite proxy
+    const urlHostname = url.hostname;
+    const browserHostname =
+      window.location.hostname ?? window.location.host?.split(":")[0];
+    if (
+      browserHostname &&
+      (urlHostname === "localhost" || urlHostname === "127.0.0.1") &&
+      browserHostname !== "localhost" &&
+      browserHostname !== "127.0.0.1"
+    ) {
+      const { port } = url;
+      if (port) {
+        return `/runtime/${port}`;
+      }
+    }
+
+    // Standard case: extract prefix before /api/conversations
     const match = pathname.match(/^(.*?)\/api\/conversations(?:\/|$)/);
     const prefix = match ? match[1] : "";
     return prefix.replace(/\/$/, "");

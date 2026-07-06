@@ -2,6 +2,9 @@ import React from "react";
 
 export interface WebSocketHookOptions {
   queryParams?: Record<string, string | boolean>;
+  /** Message to send immediately after WebSocket opens (before onOpen callback).
+   *  Used for first-message auth to avoid putting secrets in the URL. */
+  authMessage?: string;
   onOpen?: (event: Event) => void;
   onClose?: (event: CloseEvent) => void;
   onMessage?: (event: MessageEvent) => void;
@@ -61,6 +64,12 @@ export const useWebSocket = <T = string>(
       setError(null); // Clear any previous errors
       setIsReconnecting(false);
       attemptCountRef.current = 0; // Reset attempt count on successful connection
+
+      // Send auth message first (before onOpen callback) for first-message auth
+      if (optionsRef.current?.authMessage) {
+        ws.send(optionsRef.current.authMessage);
+      }
+
       optionsRef.current?.onOpen?.(event);
     };
 

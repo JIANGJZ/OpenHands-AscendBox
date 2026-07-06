@@ -60,21 +60,80 @@ const getSearchActionContent = (
 };
 
 // File Editor Actions
+//
+// Renders file_editor / str_replace_editor tool calls as readable code /
+// diff blocks instead of leaving them empty (previously only ``create`` was
+// handled, so edits/inserts showed nothing and the raw tool-call JSON leaked
+// into the card title via the ``summary`` field).
+const guessLangFromPath = (path: string): string => {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    py: "python",
+    ts: "typescript",
+    tsx: "tsx",
+    js: "javascript",
+    jsx: "jsx",
+    json: "json",
+    sh: "bash",
+    bash: "bash",
+    yml: "yaml",
+    yaml: "yaml",
+    md: "markdown",
+    go: "go",
+    rs: "rust",
+    java: "java",
+    c: "c",
+    cpp: "cpp",
+    h: "c",
+    html: "html",
+    css: "css",
+    sql: "sql",
+  };
+  return map[ext] ?? "";
+};
+
+const truncate = (text: string): string =>
+  text.length > MAX_CONTENT_LENGTH
+    ? `${text.slice(0, MAX_CONTENT_LENGTH)}...`
+    : text;
+
 const getFileEditorActionContent = (
   action: FileEditorAction | StrReplaceEditorAction,
 ): string => {
-  // Early return if not a create command or no file text
-  if (action.command !== "create" || !action.file_text) {
-    return getNoContentActionContent();
-  }
+  const lang = guessLangFromPath(action.path);
 
-  // Process file text with length truncation
-  let fileText = action.file_text;
-  if (fileText.length > MAX_CONTENT_LENGTH) {
-    fileText = `${fileText.slice(0, MAX_CONTENT_LENGTH)}...`;
+  switch (action.command) {
+    case "create": {
+      if (!action.file_text) return getNoContentActionContent();
+      return `**${action.path}**\n\`\`\`${lang}\n${truncate(action.file_text)}\n\`\`\``;
+    }
+    case "str_replace": {
+      // Render as a diff so removed/added lines are visually distinct.
+      const oldStr = action.old_str ?? "";
+      const newStr = action.new_str ?? "";
+      const diff = [
+        ...oldStr.split("\n").map((l) => `- ${l}`),
+        ...newStr.split("\n").map((l) => `+ ${l}`),
+      ].join("\n");
+      return `**${action.path}**\n\`\`\`diff\n${truncate(diff)}\n\`\`\``;
+    }
+    case "insert": {
+      const newStr = action.new_str ?? "";
+      const at =
+        action.insert_line != null ? ` (after line ${action.insert_line})` : "";
+      return `**${action.path}**${at}\n\`\`\`${lang}\n${truncate(newStr)}\n\`\`\``;
+    }
+    case "view": {
+      const range = action.view_range
+        ? ` (lines ${action.view_range[0]}–${action.view_range[1]})`
+        : "";
+      return `**${action.path}**${range}`;
+    }
+    case "undo_edit":
+      return `**${action.path}** (undo last edit)`;
+    default:
+      return getNoContentActionContent();
   }
-
-  return `${action.path}\n${fileText}`;
 };
 
 // Command Actions

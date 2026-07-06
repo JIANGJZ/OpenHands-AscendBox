@@ -181,7 +181,7 @@ class ProcessSandboxService(SandboxService):
             process = psutil.Process(process_info.pid)
             if process.is_running():
                 status = process.status()
-                if status == psutil.STATUS_RUNNING:
+                if status in (psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING, psutil.STATUS_DISK_SLEEP):
                     return SandboxStatus.RUNNING
                 elif status == psutil.STATUS_STOPPED:
                     return SandboxStatus.PAUSED

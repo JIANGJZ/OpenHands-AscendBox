@@ -738,13 +738,13 @@ export function ConversationWebSocketProvider({
       resend_all: true,
     };
 
-    // Add session_api_key if available
-    if (sessionApiKey) {
-      queryParams.session_api_key = sessionApiKey;
-    }
-
     return {
       queryParams,
+      // Use first-message auth to avoid putting session_api_key in URL
+      // (nginx blocks WebSocket upgrades with "api_key" in query string)
+      authMessage: sessionApiKey
+        ? JSON.stringify({ type: "auth", session_api_key: sessionApiKey })
+        : undefined,
       reconnect: { enabled: true },
       onOpen: async () => {
         setMainConnectionState("OPEN");
@@ -800,15 +800,14 @@ export function ConversationWebSocketProvider({
       resend_all: true,
     };
 
-    // Add session_api_key if available
-    if (sessionApiKey) {
-      queryParams.session_api_key = sessionApiKey;
-    }
-
     const planningAgentConversation = subConversations?.[0];
 
     return {
       queryParams,
+      // Use first-message auth to avoid putting session_api_key in URL
+      authMessage: sessionApiKey
+        ? JSON.stringify({ type: "auth", session_api_key: sessionApiKey })
+        : undefined,
       reconnect: { enabled: true },
       onOpen: async () => {
         setPlanningConnectionState("OPEN");

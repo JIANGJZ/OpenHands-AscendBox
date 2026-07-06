@@ -42,11 +42,36 @@ const createTitleFromKey = (
   );
 };
 
+// Some models (e.g. Qwen served via SGLang) don't produce a human-readable
+// ``summary`` for an action and instead dump the raw tool call — e.g.
+// ``file_editor: {"command": "create", "file_text": "...", ...}`` — into the
+// summary field. Titles are rendered as plain text (not markdown), so such a
+// dump shows up as garbled one-liner with literal ``\n`` / ``\uXXXX`` escapes.
+// Detect that shape and reject it so we fall through to the proper localized
+// title (Create/Edit/Read {{path}}) and the diff/code details below.
+const isRawToolCallDump = (summary: string): boolean => {
+  // pattern: "<tool_name>: { ... }" where the braces hold JSON-ish args
+  const m = summary.match(/^[a-z_][a-z0-9_]*\s*:\s*(\{.*\})\s*$/is);
+  if (!m) return false;
+  try {
+    JSON.parse(m[1]);
+    return true;
+  } catch {
+    // Even if it doesn't parse cleanly (truncated), a leading "tool:{...}"
+    // with common tool-call keys is still a raw dump we don't want as a title.
+    return /"(command|path|file_text|old_str|new_str|arguments)"\s*:/.test(
+      m[1],
+    );
+  }
+};
+
 const getSummaryTitleForActionEvent = (
   event: ActionEvent,
 ): React.ReactNode | null => {
   const summary = event.summary?.trim().replace(/\s+/g, " ") || "";
-  return summary || null;
+  if (!summary) return null;
+  if (isRawToolCallDump(summary)) return null;
+  return summary;
 };
 
 // Action Event Processing

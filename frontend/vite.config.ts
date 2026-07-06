@@ -95,6 +95,39 @@ export default defineConfig(({ mode }) => {
           secure: !INSECURE_SKIP_VERIFY,
           // rewriteWsOrigin: true,
         },
+        // Dynamic runtime proxy: /runtime/{port}/* -> http://localhost:{port}/*
+        //
+        // The bundled http-proxy in this Vite version does NOT support the
+        // `router` option, so a static `target` was always used and every
+        // /runtime/{port} request went to the default 8000 sandbox — 401ing
+        // against the wrong per-conversation agent-server.
+        //
+        // Mechanism: http-proxy builds each request's outgoing options from the
+        // ORIGINAL `opts` object (the one passed to createProxyServer, captured
+        // via `configure`). Vite's `bypass` only receives a shallow COPY of
+        // opts, so mutating it there has no effect. Instead we capture the real
+        // opts in `configure`, then in `rewrite` (which Vite calls synchronously
+        // right before proxy.web()/proxy.ws()) we (a) point opts.target at the
+        // correct agent-server port and (b) strip the /runtime/{port} prefix.
+        "^/runtime/\\d+": (() => {
+          let realOpts: any;
+          return {
+            target: "http://127.0.0.1:8000",
+            changeOrigin: true,
+            ws: true,
+            secure: false,
+            configure: (_proxy: any, opts: any) => {
+              realOpts = opts;
+            },
+            rewrite: (path: string) => {
+              const match = path.match(/^\/runtime\/(\d+)/);
+              if (match && realOpts) {
+                realOpts.target = `http://127.0.0.1:${match[1]}`;
+              }
+              return path.replace(/^\/runtime\/\d+/, "");
+            },
+          };
+        })(),
       },
       watch: {
         ignored: ["**/node_modules/**", "**/.git/**"],
